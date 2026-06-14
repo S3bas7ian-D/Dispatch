@@ -1,1 +1,127 @@
+# Emergency Dispatch System
 
+A C program that simulates an emergency unit dispatch system. It reads units and commands from `tema1.in` and writes results to `tema1.out`.
+
+---
+
+## Input file format
+
+```
+<number of units>
+<unit_id> <unit_type>
+...
+<number of commands>
+<COMMAND [arguments]>
+...
+```
+
+Example:
+```
+3
+1 A
+2 B
+3 C
+5
+ADD_INCIDENT 1 high "fire in building"
+DISPATCH
+SHOW_INTERVENTIONS
+SOLVED_INCIDENT 1
+CHECK_UNITS_AVAILABILITY
+```
+
+---
+
+## Commands
+
+- **ADD_INCIDENT \<id\> \<priority\> "\<description\>"** — Registers a new incident and places it in the appropriate priority queue. Priority must be `low`, `medium`, or `high`.
+
+- **CHECK_UNITS_AVAILABILITY** — Prints the number of currently available units.
+
+- **DISPATCH** — Assigns the highest-priority queued incident to the next available unit. Priority order is high → medium → low. Prints `INVALID OPERATION! ERROR 404` if no unit or no queued incident is available.
+
+- **UNDO_LAST_DISPATCH** — Reverses the most recent dispatch that has not been solved yet. Returns the unit to the availability queue and the incident back to its priority queue with status `queued`. Prints `INVALID OPERATION! ERROR 404` if there is nothing to undo.
+
+- **SOLVED_INCIDENT \<id\>** — Marks an active intervention as solved and returns the unit to the availability queue. Prints `INVALID OPERATION! ERROR 404` if the incident is not currently being intervened.
+
+- **SHOW_UNIT \<id\>** — Prints the type and availability status of the unit with the given id. Prints `INVALID OPERATION! ERROR 404` if the unit does not exist.
+
+- **SHOW_INCIDENT \<id\>** — Prints the priority, description, and status of the incident with the given id. Prints `INVALID OPERATION! ERROR 404` if the incident does not exist.
+
+- **SHOW_INTERVENTIONS** — Prints all active interventions with their current status. Prints `No intervention has been initiated` if the list is empty.
+
+---
+
+## Data structures
+
+- **unit** — Represents a single emergency unit. Holds the unit's `id` (int), `type` (char, e.g. A/B/C), and `availability` (1 = available, 0 = unavailable).
+
+- **incident** — Represents a single emergency report. Holds the incident's `id` (int), `priority` (low/medium/high), a heap-allocated `description` string, and a `status` (queued/intervened/solved).
+
+- **Lincident** — A node in the main incidents list. Forms a circular doubly linked list with a sentinel node. This is the only place that owns the `incident` data and its description string — everything else just points to it.
+
+- **LincidentQH / LincidentQM / LincidentQL** — Nodes for the high, medium, and low priority queues. Each forms a circular singly linked list. Nodes point into the main incidents list and do not own any data.
+
+- **TQH / TQM / TQL** — Thin wrapper structs for each priority queue. Each holds only the `end` pointer of its circular queue.
+
+- **unit_cell** — A node in the unit availability queue. Forms a circular singly linked list. Points into the `unit[]` array owned by `main` and does not own anything.
+
+- **unit_q** — Wrapper for the unit availability queue. Holds only the `end` pointer.
+
+- **Lintervention** — A node in the active interventions list. Forms a circular doubly linked list with a sentinel. Each node records which incident is being handled by which unit, uses 2 pointers  for prev and next and 2 pointers for the incident-unit pair.
+
+- **stack_node** — A node in the undo history stack. Forms a singly linked LIFO stack. Each node records the incident and unit involved in a dispatch operation. Does not own either pointer.
+
+- **history_stack** — Wrapper for the undo stack. Holds only the `top` pointer, is used for stack insertions/extractions.
+
+---
+
+## Functions
+
+### Initialisation
+
+- **InitList_inc()** — Creates the sentinel node for the main incidents list.
+- **Init_intervention()** — Creates the sentinel node for the interventions list.
+- **Init_history_stack()** — Creates an empty undo stack.
+- **InitQH() / InitQM() / InitQL()** — Create empty high, medium, and low priority queues.
+- **Init_unit_Q()** — Creates an empty unit availability queue.
+
+### Command handlers
+
+- **check_command(command)** — Parses the command string and returns its ID (1–8). Returns 0 if unrecognised. Uses 'strstr' to find match and process the commands, "UNDO_LAST_DISPATCH" is placed
+before "DISPATCH" otherwise both would be identified as the same command.
+
+- **ADD_INCIDENT(L, command, QL, QM, QH)** — Parses the command, allocates a new incident cell, appends it to the main list, and queues it in the coresponding priority queue. Returns 1 on success, 0 on failure.
+
+- **dispatch(QH, QM, QL, UL, LI, f2, H)** — Takes the first available unit and the highest-priority queued incident, creates an intervention node, and pushes a record onto the history stack. Returns 0 on success, 1 on failure.
+
+- **undo_last_dispatch(LI, high, medium, low, L, h, units, f2)** — Pops the history stack skipping solved interventions, sets the incident back to `queued`, removes the intervention node, places the incident back in the queue, and returns the unit to the availability queue.
+
+- **solved_incident(L, id, U, f2)** — Finds the intervention by incident id, sets its status to `solved`, marks the unit as available, and inserts the unit back into the availability queue.
+
+- **chk_u_a(q, f2)** — Counts and prints the number of units currently in the availability queue.
+
+- **show_unit(num_units, u, f2)** — Prints the id, type, and availability status of a unit.
+
+- **show_incident(id, L, f2)** — Searches the main list for the given id and prints the incident's priority, description, and status.
+
+- **show_interventions(L, f2)** — Iterates the interventions list and prints each entry. Prints a message if the list is empty.
+
+### Utility
+
+- **insert_unit(q, u)** — Inserts a unit pointer into the circular availability queue. Returns 1 on success, 0 on malloc failure.
+
+- **cleanup(...)** — Function that frees all allocated memory, respects ownership.
+
+---
+
+## Memory ownership
+
+**unit[] array** in `main` owns the actual unit data. All other structures only hold pointers to it.
+**main incidents list** owns every `incident` struct and its `description` string.
+**priority queues**(low, medium, high) own only their queue wrapper nodes, not the incidents they point to.
+**interventions list** owns only its own nodes, not the incident or unit pointers inside them.
+**history stack** owns only its stack nodes, not the incident or unit pointers inside them.
+
+P.S.
+Most functions are int type, hence can be used for debugging the code or for memory safety.
+The cleanup function frees everything, call with caution.
